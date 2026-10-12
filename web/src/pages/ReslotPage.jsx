@@ -110,7 +110,7 @@ export default function ReslotPage({ apiBase = 'http://localhost:8000' }) {
                 <th className="p-3">Weekly Picks</th>
                 <th className="p-3">Distance Delta</th>
                 <th className="p-3">Daily Travel Saved</th>
-                <th className="p-3 text-right">Daily Dollar Saved</th>
+                <th className="p-3 text-right">Daily Labor Value Saved (₹/day)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
