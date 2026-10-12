@@ -9,6 +9,8 @@ Produces cleaned DataFrames and a detailed audit trail report.
 """
 
 import os
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 
@@ -137,8 +139,10 @@ def clean_orders(df: pd.DataFrame, valid_product_ids: set, report: DataQualityRe
     return cleaned
 
 
-def run_pipeline(data_dir: str = "slotiq/data", use_dirty: bool = False) -> tuple:
+def run_pipeline(data_dir: str | None = None, use_dirty: bool = False) -> tuple:
     """Run full validation pipeline on CSVs in data_dir and print formatted audit report."""
+    if data_dir is None:
+        data_dir = str(Path(__file__).resolve().parent.parent / "data")
     suffix = "_dirty" if use_dirty else ""
     p_path = os.path.join(data_dir, f"products{suffix}.csv")
     l_path = os.path.join(data_dir, f"locations{suffix}.csv")
@@ -174,5 +178,5 @@ def print_report(report: DataQualityReport, target_label: str = "Dirty File"):
 
 if __name__ == "__main__":
     # Test on dirty data as required by Step 2 checkpoint
-    _, dirty_report = run_pipeline("slotiq/data", use_dirty=True)
+    _, dirty_report = run_pipeline(use_dirty=True)
     print_report(dirty_report, "Dirty Dataset")

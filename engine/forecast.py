@@ -45,7 +45,9 @@ def attach_forecasts(products_df: pd.DataFrame, alpha: float = 0.3) -> pd.DataFr
 
 
 if __name__ == "__main__":
-    prods = pd.read_csv("slotiq/data/products.csv")
+    from pathlib import Path
+
+    prods = pd.read_csv(Path(__file__).resolve().parent.parent / "data" / "products.csv")
     forecasted = attach_forecasts(prods)
     print("DEMAND FORECAST SAMPLE (Exponential Smoothing alpha=0.3):")
     sample = forecasted[["product_id", "avg_weekly_demand", "predicted_demand"]].head(10)

@@ -94,9 +94,12 @@ def explain_assignment(
 
 
 if __name__ == "__main__":
-    from slotiq.engine.strategies import strategy_optimal_hungarian
-    prods = pd.read_csv("slotiq/data/products.csv")
-    locs = pd.read_csv("slotiq/data/locations.csv")
+    from pathlib import Path
+    from engine.strategies import strategy_optimal_hungarian
+
+    data_dir = Path(__file__).resolve().parent.parent / "data"
+    prods = pd.read_csv(data_dir / "products.csv")
+    locs = pd.read_csv(data_dir / "locations.csv")
     plan = strategy_optimal_hungarian(prods, locs)
     reasons = explain_assignment(plan, prods, locs)
 

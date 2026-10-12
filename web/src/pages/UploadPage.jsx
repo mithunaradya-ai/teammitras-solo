@@ -97,7 +97,7 @@ export default function UploadPage({ apiBase = 'http://localhost:8000' }) {
             <div className="h-64 flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-800/80 rounded-lg">
               <RefreshCw className="w-8 h-8 text-slate-600 mb-2 animate-spin" style={{ animationDuration: '6s' }} />
               <p className="text-sm">Upload a dirty CSV file to inspect the line-by-line cleaner audit trail.</p>
-              <p className="text-xs text-slate-600 mt-1">Try uploading <code className="text-slate-400">slotiq/data/products_dirty.csv</code></p>
+              <p className="text-xs text-slate-600 mt-1">Try uploading <code className="text-slate-400">data/products_dirty.csv</code></p>
             </div>
           ) : (
             <div className="space-y-4">

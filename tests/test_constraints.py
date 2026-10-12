@@ -12,10 +12,10 @@ import pytest
 import pandas as pd
 from pathlib import Path
 
-from slotiq.engine.strategies import (
+from engine.strategies import (
     strategy_abc_greedy, strategy_optimal_hungarian, strategy_forecast_affinity
 )
-from slotiq.engine.metrics import (
+from engine.metrics import (
     calculate_metrics, check_assignment_feasibility, is_dimension_feasible, is_handling_feasible
 )
 
@@ -89,3 +89,10 @@ def test_forecast_affinity_constraints(clean_datasets):
 
     metrics = calculate_metrics(plan, prods, locs)
     assert metrics["feasibility_pct"] == 100.0
+
+
+def test_affinity_distance_metric_uses_order_pairs(clean_datasets):
+    prods, locs, orders = clean_datasets
+    baseline = dict(zip(prods["product_id"], prods["baseline_location_id"]))
+    metrics = calculate_metrics(baseline, prods, locs, orders_df=orders)
+    assert metrics["average_affinity_distance_m"] > 0

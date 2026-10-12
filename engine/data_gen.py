@@ -131,8 +131,10 @@ def inject_dirty_data(products_df: pd.DataFrame, locations_df: pd.DataFrame, ord
     return p_dirty, l_dirty, o_dirty
 
 
-def run_generation(data_dir: str = "slotiq/data") -> dict:
+def run_generation(data_dir: str | None = None) -> dict:
     """Generate all datasets, save to CSV files, and return summary statistics."""
+    if data_dir is None:
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
     os.makedirs(data_dir, exist_ok=True)
     locs = generate_locations(320)
     prods = generate_products(locs, 300)

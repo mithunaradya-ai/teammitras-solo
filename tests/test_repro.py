@@ -10,9 +10,10 @@ import pytest
 import pandas as pd
 from pathlib import Path
 
-from slotiq.engine.data_gen import generate_locations, generate_products, generate_orders
-from slotiq.engine.strategies import strategy_optimal_hungarian, strategy_forecast_affinity
-from slotiq.engine.metrics import calculate_metrics
+from engine.data_gen import generate_locations, generate_products, generate_orders
+from engine.strategies import strategy_optimal_hungarian, strategy_forecast_affinity
+from engine.metrics import calculate_metrics
+from engine.stress_benchmark import run_constrained_benchmark
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
@@ -49,3 +50,16 @@ def test_strategy_deterministic_output():
     aff_plan1 = strategy_forecast_affinity(prods, locs, orders)
     aff_plan2 = strategy_forecast_affinity(prods, locs, orders)
     assert aff_plan1 == aff_plan2, "Forecast + Affinity plan must be deterministic"
+    baseline = dict(zip(prods["product_id"], prods["baseline_location_id"]))
+    baseline_affinity = calculate_metrics(baseline, prods, locs, orders_df=orders)["average_affinity_distance_m"]
+    optimized_affinity = calculate_metrics(aff_plan1, prods, locs, orders_df=orders)["average_affinity_distance_m"]
+    assert optimized_affinity < baseline_affinity
+
+
+def test_hungarian_handles_tight_capacity_scenario():
+    results = run_constrained_benchmark()
+    greedy = results["ABC-Greedy"]
+    hungarian = results["Hungarian"]
+    assert hungarian["assigned"] == hungarian["products"]
+    assert hungarian["metrics"]["feasibility_pct"] == 100.0
+    assert greedy["assigned"] < greedy["products"]

@@ -100,17 +100,63 @@ class node_operator toneIndigo
 
 ---
 
-## Quickstart (Setup in 3 Commands)
+## Quickstart
+
+In PowerShell, clone the repository and run the backend commands from its root. The repository root contains `api/`, `engine/`, `data/`, `tests/`, and `web/` directly.
+
+### Backend
 
 ```bash
-# 1. Clone & install Python environment
-uv venv --python 3.11 .venv && uv pip install -r requirements.txt
+git clone https://github.com/mithunaradya-ai/teammitras-solo.git
+cd teammitras-solo
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn api.main:app --reload
+```
 
-# 2. Start FastAPI Backend (Port 8000)
-.\.venv\Scripts\python.exe slotiq/api/main.py
+The API is available at `http://localhost:8000` and its interactive docs at `/docs`.
 
-# 3. Launch React + Vite Dashboard (Port 5173)
-cd slotiq/web && npm install && npm run dev
+### Dashboard
+
+In a second terminal, from the repository root:
+
+```bash
+cd web
+npm.cmd install
+npm.cmd run dev
+```
+
+Open `http://localhost:5173`. Node.js and npm are required for the dashboard.
+
+## How It Works
+
+1. On startup, the API loads the sample product, location, and order CSVs from `data/`.
+2. The validation engine checks uploaded CSVs and updates the API's in-memory datasets.
+3. The strategy engine matches products to feasible locations, scoring door travel from weekly demand and Manhattan distance. The forecast-and-affinity strategy adds a next-week demand estimate and attempts feasible swaps that trade off predicted door travel against co-order pair distance.
+4. The React dashboard calls the API to show comparisons, layout maps, SKU explanations, demand scenarios, and suggested moves.
+
+The app is a local prototype: it uses generated sample data by default, keeps uploaded data in memory, and does not connect to a warehouse system or execute inventory moves.
+
+## Using the Prototype
+
+Keep both terminals running while using the dashboard:
+
+1. **Leaderboard:** compare the bundled baseline, greedy, Hungarian, and forecast-plus-affinity plans. The table reports picking distance, feasibility, space utilization, estimated INR labor cost, and average co-order pair distance. Use **Apply** to set a strategy as the API's active plan.
+2. **Heatmap:** compare the baseline and optimized warehouse layouts.
+3. **Product Lookup:** search for a SKU such as `P001` to see its recommended location and placement explanation.
+4. **What-If Simulator:** adjust category demand multipliers or select a preset to recalculate an illustrative plan.
+5. **Re-slotting Plan:** review the move list and illustrative cost/payback estimate; download the recommendations as CSV. This is a plan only—the prototype does not move inventory.
+6. **Ingestion & Audit:** choose a data type, then upload its CSV to run the validator and inspect its audit summary. The bundled examples are `data/products_dirty.csv`, `data/locations_dirty.csv`, and `data/orders_dirty.csv`.
+
+Uploaded data and the active plan are held in API memory, not persisted to a database. Restarting the API reloads the bundled sample datasets. Financial values and the synthetic benchmark are illustrative; use measured warehouse data and costs before making operational decisions.
+
+### Tests and benchmarks
+
+From the repository root:
+
+```bash
+.\.venv\Scripts\python.exe -m pytest tests -v
+.\.venv\Scripts\python.exe -m engine.stress_benchmark
 ```
 
 ---
@@ -118,8 +164,9 @@ cd slotiq/web && npm install && npm run dev
 ## System Architecture
 
 ```
-slotiq/
+.
 ├── engine/              # Pure Python deterministic optimization algorithms
+│   ├── stress_benchmark.py # Tight-capacity greedy vs Hungarian benchmark
 │   ├── data_gen.py      # Synthetic generator (seed 42, 300 SKUs, 320 bins, Pareto)
 │   ├── validator.py     # Data cleaner & audit logging
 │   ├── metrics.py       # 6 core warehouse operational metrics
@@ -133,6 +180,7 @@ slotiq/
 ├── web/                 # React 19 + Vite + Tailwind + Plotly.js Dark Dashboard
 ├── data/                # Benchmark clean & dirty CSVs
 ├── tests/               # Constraint verification & reproducibility test suite
+├── requirements.txt     # Python runtime and API dependencies
 ├── README.md            # Setup guide & CLI instructions
 └── REPORT.md            # Empirical performance report from real computed metrics
 ```
@@ -141,24 +189,24 @@ slotiq/
 
 ## Standalone CLI Verification Commands
 
-All core modules run independently from the command line:
+Run from the repository root:
 
 ```bash
 # Generate synthetic dataset (seed 42)
-.\.venv\Scripts\python.exe slotiq/engine/data_gen.py
+.\.venv\Scripts\python.exe engine/data_gen.py
 
 # Run Data Validator on dirty dataset
-.\.venv\Scripts\python.exe slotiq/engine/validator.py
+.\.venv\Scripts\python.exe engine/validator.py
 
 # Benchmark all 4 optimization strategies
-.\.venv\Scripts\python.exe slotiq/engine/strategies.py
+.\.venv\Scripts\python.exe engine/strategies.py
 
 # Run Explainability engine
-.\.venv\Scripts\python.exe slotiq/engine/explain.py
+.\.venv\Scripts\python.exe engine/explain.py
 
 # Compute Re-slotting plan & payback ROI
-.\.venv\Scripts\python.exe slotiq/engine/reslot.py
+.\.venv\Scripts\python.exe engine/reslot.py
 
 # Run complete automated test suite
-.\.venv\Scripts\python.exe -m pytest slotiq/tests -v
+.\.venv\Scripts\python.exe -m pytest tests -v
 ```

@@ -83,7 +83,7 @@ export default function LeaderboardPage({ apiBase = 'http://localhost:8000', onS
       <div className="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
         <div className="px-5 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/40">
           <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Multi-Metric Comparative Table</span>
-          <span className="text-xs text-emerald-400 font-mono">100% Feasibility Enforced</span>
+          <span className="text-xs text-emerald-400 font-mono">Feasibility reported per strategy</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-mono">
@@ -94,7 +94,8 @@ export default function LeaderboardPage({ apiBase = 'http://localhost:8000', onS
                 <th className="p-3">Reduction</th>
                 <th className="p-3">Feasibility</th>
                 <th className="p-3">Space Util</th>
-                <th className="p-3">Weekly Labor ($)</th>
+                <th className="p-3">Weekly Labor (₹)</th>
+                <th className="p-3">Co-order Pair Distance</th>
                 <th className="p-3">Moves</th>
                 <th className="p-3">Top20 in Prime</th>
                 <th className="p-3 text-right">Action</th>
@@ -104,7 +105,7 @@ export default function LeaderboardPage({ apiBase = 'http://localhost:8000', onS
               {data && Object.entries(data).map(([name, item]) => {
                 const m = item.metrics;
                 const reduction = Math.max(0, ((baselineDist - m.total_picking_distance_m) / baselineDist) * 100).toFixed(1);
-                const isOptimal = name.includes('Forecast') || name.includes('Optimal');
+                const isOptimal = name.includes('Optimal');
                 return (
                   <tr key={name} className={`hover:bg-slate-800/40 transition ${isOptimal ? 'bg-emerald-950/10' : ''}`}>
                     <td className="p-3 font-semibold text-white flex items-center gap-1.5">
@@ -123,7 +124,8 @@ export default function LeaderboardPage({ apiBase = 'http://localhost:8000', onS
                       </span>
                     </td>
                     <td className="p-3 text-slate-300">{m.space_utilization_pct}%</td>
-                    <td className="p-3 text-slate-200">${m.handling_cost_usd.toLocaleString()}</td>
+                    <td className="p-3 text-slate-200">₹{m.handling_cost_inr.toLocaleString()}</td>
+                    <td className="p-3 text-slate-200">{m.average_affinity_distance_m.toLocaleString()} m</td>
                     <td className="p-3 text-slate-400">{m.moves_needed}</td>
                     <td className="p-3 text-amber-400 font-semibold">{m.high_demand_in_prime_slot_pct}%</td>
                     <td className="p-3 text-right">

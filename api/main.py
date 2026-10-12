@@ -23,14 +23,14 @@ from pydantic import BaseModel
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from slotiq.engine.validator import clean_products, clean_locations, clean_orders, DataQualityReport
-from slotiq.engine.metrics import calculate_metrics
-from slotiq.engine.strategies import (
+from engine.validator import clean_products, clean_locations, clean_orders, DataQualityReport
+from engine.metrics import calculate_metrics
+from engine.strategies import (
     strategy_baseline, strategy_abc_greedy, strategy_optimal_hungarian,
     strategy_forecast_affinity, run_all_strategies
 )
-from slotiq.engine.explain import explain_assignment
-from slotiq.engine.reslot import calculate_reslotting_plan
+from engine.explain import explain_assignment
+from engine.reslot import calculate_reslotting_plan
 
 app = FastAPI(title="SlotIQ API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -116,7 +116,11 @@ def optimize(strategy: str = Query("forecast_affinity")):
     label, fn = strat_map[key]
     plan = fn()
     STATE["current_plan"], STATE["current_strategy"] = plan, label
-    return {"strategy": label, "metrics": calculate_metrics(plan, prods, locs), "reslotting_summary": calculate_reslotting_plan(plan, prods, locs)}
+    return {
+        "strategy": label,
+        "metrics": calculate_metrics(plan, prods, locs, orders_df=orders),
+        "reslotting_summary": calculate_reslotting_plan(plan, prods, locs, orders_df=orders)
+    }
 
 
 @app.get("/compare")
@@ -188,9 +192,13 @@ def simulate_whatif(req: WhatIfRequest):
         mask = prods["category"] == cat
         prods.loc[mask, "avg_weekly_demand"] = prods.loc[mask, "avg_weekly_demand"] * mult
     plan = strategy_forecast_affinity(prods, locs, orders)
-    return {"multipliers": req.multipliers, "metrics": calculate_metrics(plan, prods, locs), "reslot": calculate_reslotting_plan(plan, prods, locs)}
+    return {
+        "multipliers": req.multipliers,
+        "metrics": calculate_metrics(plan, prods, locs, orders_df=orders),
+        "reslot": calculate_reslotting_plan(plan, prods, locs, orders_df=orders)
+    }
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("slotiq.api.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)

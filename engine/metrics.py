@@ -1,19 +1,21 @@
 """Metrics calculation engine for SlotIQ warehouse slotting.
 
-Computes the 6 key operational metrics:
+Computes operational slotting metrics:
 1. Total picking distance (pick frequency * distance to door)
 2. Space utilization % (used volume / capacity volume)
 3. Feasibility % (passes dimensional, capacity, handling, and availability constraints)
-4. Handling cost ($) based on documented cost per meter walked
+4. Handling cost (INR) based on an explicit cost-per-meter assumption
 5. Re-slotting moves needed vs baseline
 6. High-demand-in-prime-slot % (top 20% products in top 20% locations)
+7. Co-order-frequency-weighted distance between associated products
 """
 
-import pandas as pd
-import numpy as np
+from collections import defaultdict
 
-# Operational Cost Parameter: average picking labor cost per meter in standard operations ($/m)
-COST_PER_METER_DEFAULT = 0.15
+import pandas as pd
+
+# Illustrative Indian labor-cost assumption (not a published industry benchmark).
+COST_PER_METER_DEFAULT = 0.03
 
 
 def is_dimension_feasible(p_row: pd.Series, loc_row: pd.Series) -> bool:
@@ -43,13 +45,53 @@ def check_assignment_feasibility(p_row: pd.Series, loc_row: pd.Series) -> tuple[
     return True, "Valid"
 
 
+def compute_affinity_pair_counts(orders_df: pd.DataFrame) -> dict[tuple[str, str], int]:
+    """Count distinct co-ordered product pairs, counting each pair once per order."""
+    pair_counts: defaultdict[tuple[str, str], int] = defaultdict(int)
+    baskets = orders_df.groupby("order_id")["product_id"].apply(set)
+    for items in baskets:
+        ordered_items = sorted(items)
+        for index, product_a in enumerate(ordered_items):
+            for product_b in ordered_items[index + 1:]:
+                pair_counts[(product_a, product_b)] += 1
+    return dict(pair_counts)
+
+
+def average_affinity_distance(
+    assignment: dict,
+    locations_df: pd.DataFrame,
+    orders_df: pd.DataFrame | None
+) -> float:
+    """Return co-order-frequency-weighted Manhattan distance for assigned SKU pairs."""
+    if orders_df is None or orders_df.empty:
+        return 0.0
+
+    loc_lookup = locations_df.set_index("location_id").to_dict(orient="index")
+    pair_counts = compute_affinity_pair_counts(orders_df)
+    weighted_distance = 0.0
+    total_pair_count = 0
+
+    for (product_a, product_b), count in pair_counts.items():
+        location_a = assignment.get(product_a)
+        location_b = assignment.get(product_b)
+        if location_a not in loc_lookup or location_b not in loc_lookup:
+            continue
+        loc_a, loc_b = loc_lookup[location_a], loc_lookup[location_b]
+        distance = abs(float(loc_a["x"]) - float(loc_b["x"])) + abs(float(loc_a["y"]) - float(loc_b["y"]))
+        weighted_distance += count * distance
+        total_pair_count += count
+
+    return round(weighted_distance / total_pair_count, 2) if total_pair_count else 0.0
+
+
 def calculate_metrics(
     assignment: dict,
     products_df: pd.DataFrame,
     locations_df: pd.DataFrame,
-    cost_per_meter: float = COST_PER_METER_DEFAULT
+    cost_per_meter: float = COST_PER_METER_DEFAULT,
+    orders_df: pd.DataFrame | None = None
 ) -> dict:
-    """Compute all 6 operational metrics strictly from real data inputs."""
+    """Compute operational metrics strictly from the supplied data inputs."""
     loc_lookup = locations_df.set_index("location_id").to_dict(orient="index")
     prod_lookup = products_df.set_index("product_id").to_dict(orient="index")
 
@@ -110,17 +152,21 @@ def calculate_metrics(
         "total_picking_distance_m": round(total_picking_dist, 2),
         "space_utilization_pct": space_utilization_pct,
         "feasibility_pct": feasibility_pct,
-        "handling_cost_usd": handling_cost,
+        "handling_cost_inr": handling_cost,
         "moves_needed": moves_needed,
         "high_demand_in_prime_slot_pct": high_demand_prime_pct,
+        "average_affinity_distance_m": average_affinity_distance(assignment, locations_df, orders_df),
         "evaluated_products": total_assigned
     }
 
 
 if __name__ == "__main__":
     # Test on generated clean dataset
-    prods = pd.read_csv("slotiq/data/products.csv")
-    locs = pd.read_csv("slotiq/data/locations.csv")
+    from pathlib import Path
+
+    data_dir = Path(__file__).resolve().parent.parent / "data"
+    prods = pd.read_csv(data_dir / "products.csv")
+    locs = pd.read_csv(data_dir / "locations.csv")
     baseline_assignment = dict(zip(prods["product_id"], prods["baseline_location_id"]))
     results = calculate_metrics(baseline_assignment, prods, locs)
     print("BASELINE METRICS EVALUATION:")

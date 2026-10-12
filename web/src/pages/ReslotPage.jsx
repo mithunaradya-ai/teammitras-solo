@@ -23,9 +23,9 @@ export default function ReslotPage({ apiBase = 'http://localhost:8000' }) {
 
   const handleDownloadCSV = () => {
     if (!plan || !plan.moves_list) return;
-    const headers = ['product_id', 'category', 'from_location', 'to_location', 'weekly_picks', 'daily_savings_m', 'daily_savings_usd'];
+    const headers = ['product_id', 'category', 'from_location', 'to_location', 'weekly_picks', 'daily_savings_m', 'daily_savings_inr'];
     const rows = plan.moves_list.map(m => [
-      m.product_id, m.category, m.from_location, m.to_location, m.weekly_picks, m.daily_savings_m, m.daily_savings_usd
+      m.product_id, m.category, m.from_location, m.to_location, m.weekly_picks, m.daily_savings_m, m.daily_savings_inr
     ]);
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -68,13 +68,13 @@ export default function ReslotPage({ apiBase = 'http://localhost:8000' }) {
 
           <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg">
             <span className="text-xs text-slate-400 uppercase font-mono">Relocation Labor Cost</span>
-            <div className="text-2xl font-bold text-slate-200 font-mono mt-1">${plan.total_relocation_cost_usd.toLocaleString()}</div>
-            <span className="text-[11px] text-slate-500 mt-0.5 block">@ $12.00 / technician move</span>
+            <div className="text-2xl font-bold text-slate-200 font-mono mt-1">₹{plan.total_relocation_cost_inr.toLocaleString()}</div>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">@ ₹12.00 / technician move</span>
           </div>
 
           <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg">
             <span className="text-xs text-slate-400 uppercase font-mono">Daily Labor Savings</span>
-            <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">${plan.daily_financial_savings_usd.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">₹{plan.daily_financial_savings_inr.toLocaleString()}</div>
             <span className="text-[11px] text-emerald-500/80 mt-0.5 block">{plan.daily_distance_saved_m.toLocaleString()} m/day reduced</span>
           </div>
 
@@ -123,7 +123,7 @@ export default function ReslotPage({ apiBase = 'http://localhost:8000' }) {
                   <td className="p-3 text-slate-300">{m.weekly_picks}</td>
                   <td className="p-3 text-blue-400">{m.distance_delta_m > 0 ? `+${m.distance_delta_m} m` : `${m.distance_delta_m} m`}</td>
                   <td className="p-3 text-slate-200">{m.daily_savings_m} m/day</td>
-                  <td className="p-3 text-right font-bold text-emerald-400">${m.daily_savings_usd.toFixed(2)}/day</td>
+                  <td className="p-3 text-right font-bold text-emerald-400">₹{m.daily_savings_inr.toFixed(2)}/day</td>
                 </tr>
               ))}
             </tbody>

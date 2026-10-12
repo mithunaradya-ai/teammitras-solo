@@ -1,57 +1,71 @@
 # SlotIQ: Engineering & Empirical Performance Report
 
-## 1. Problem Understanding
-Warehouse order-picking accounts for over 50% to 55% of total operating labor expenses in distribution facilities. Suboptimal slotting—where fast-moving, high-velocity stock keeping units (SKUs) are marooned in remote racks—forces pickers to walk tens of unnecessary kilometers every shift. SlotIQ is designed to optimize slot assignments under strict physical bin constraints (3D bounding boxes, volume limits, special handling refrigeration/fragility requirements, and bay availability) using mathematically provable optimization and co-purchase affinity.
+## 1. Scope
 
----
+SlotIQ assigns SKUs to warehouse locations using weekly demand, distance to the dispatch point, physical fit, special-handling requirements, and location availability. It also forecasts next-week demand and measures how close products appearing in the same order are placed.
 
-## 2. System Architecture
-SlotIQ features a modular decoupling between compute and presentation:
-- **Core Engine (`/engine`)**: Pure Python 3.11 with NumPy, SciPy, and PuLP. Independent of Web/API frameworks for execution in automated pipelines or edge terminals.
-- **REST Service (`/api`)**: High-throughput FastAPI application exposing upload cleaners, live solvers, and what-if simulation endpoints.
-- **Frontend Dashboard (`/web`)**: Dark, responsive React 19 + Tailwind CSS + Plotly.js interface providing spatial heatmaps, ROI metrics, and product audit tools.
+This report does not repeat an unsourced industry claim about picking's share of operating labor. Results below are deterministic outputs from the included synthetic data and are not a substitute for a measured warehouse pilot.
 
----
+## 2. Method
 
-## 3. Methodology & Algorithms
-1. **ABC-Greedy**: Segregates SKUs into Pareto tiers (A: 80% volume, B: 15%, C: 5%) and greedily allocates high-demand items to the nearest feasible bin.
-2. **Optimal Hungarian (`scipy.optimize.linear_sum_assignment`)**: Models warehouse slotting as minimum-weight bipartite matching over cost matrix $C_{ij} = \text{Demand}_i \times \text{Distance}_j$. Infeasible pairs are penalized with Big-$M$ ($10^8$), guaranteeing $O(V^3)$ polynomial-time optimality.
-3. **Multi-Capacity ILP (`PuLP CBC`)**: Formulates multi-item bin consolidation as a mixed integer program enforcing linear volume constraints.
-4. **Forecast + Affinity (AI Differentiator)**:
-   - **Holt Exponential Smoothing**: Computes 12-week smoothed velocity ($\alpha=0.3$) for forward-looking demand.
-   - **Co-Pick Affinity Lift**: Extracts market-basket co-occurrences from 5,000 order lines to calculate Lift:
-     $$\text{Lift}(A, B) = \frac{P(A \cap B)}{P(A) \cdot P(B)}$$
-   - **Deterministic Swap Search**: Evaluates local slot swaps that minimize aggregate picker transit and clustering penalties without violating feasibility.
+- **ABC-Greedy** orders SKUs by average weekly demand and assigns each to the nearest currently available feasible slot.
+- **Hungarian** minimizes total demand-weighted door distance for a one-SKU-per-slot assignment, subject to the modeled product/location feasibility pairs. It is optimal for this assignment objective when a feasible full matching exists; it is not a multi-item bin-packing solver.
+- **Forecast + Affinity** forecasts demand from 12 weeks of history, starts with a Hungarian assignment, then makes feasible swaps that trade off forecast-weighted door distance and co-order proximity.
+- **Affinity distance** is the co-order-frequency-weighted mean Manhattan distance between the assigned locations of distinct products found in the same order. Each product pair is counted once per order.
 
----
+## 3. Assumptions
 
-## 4. Documented Assumptions
-- **Cost per Meter Walked**: \$0.15 / meter (standard warehouse picker labor cost benchmark).
-- **Physical Relocation Cost**: \$12.00 / move (technician time for forklift transfer and barcode relabeling).
-- **Operating Schedule**: 5 working days / week.
-- **Distance Metric**: Manhattan travel distance $|x| + |y|$ from dispatch door at $(0, 0)$.
+- **Walking labor cost:** ₹0.03 per meter (₹30 per kilometer), an illustrative model assumption rather than a sourced industry rate.
+- **Physical relocation cost:** ₹12 per SKU move, also a modeling assumption.
+- **Operating schedule:** 5 working days per week.
+- **Travel model:** Manhattan distance from the dispatch point at `(0, 0)`; it does not model picker routes, congestion, or one-way aisles.
+- The synthetic generator uses seed `42`; the standard set contains 300 products, 320 locations, and 5,000 order lines.
 
----
+## 4. Standard Benchmark (Seed 42)
 
-## 5. Experimental Results (Computed Numbers)
-All metrics computed strictly from benchmark run with fixed seed `42` (300 products, 320 locations, 5,000 order lines, Pareto $\alpha=0.98$ where top 20% products generate 79.32% of picks):
+| Strategy | Weekly pick distance (m) | Feasibility | Space utilization | Weekly labor cost (₹) | Mean co-order pair distance (m) | Moves |
+|---|---:|---:|---:|---:|---:|---:|
+| Baseline (random) | 172,603.25 | 82.00% | 11.47% | 5,178.10 | 22.65 | 0 |
+| ABC-Greedy | 78,810.55 | 100.00% | 11.43% | 2,364.32 | 14.79 | 299 |
+| Hungarian | 78,788.85 | 100.00% | 11.43% | 2,363.67 | 14.75 | 300 |
+| Forecast + Affinity | 78,810.20 | 100.00% | 11.43% | 2,364.31 | 14.58 | 298 |
 
-| Strategy | Picking Dist (m/wk) | Distance Reduction | Feasibility | Space Util | Weekly Labor ($) | Physical Moves | Top 20% in Prime Slots |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Baseline (Random)** | 172,603.25 m | 0.00% | 82.00% | 11.47% | \$25,890.49 | 0 | 20.00% |
-| **ABC-Greedy** | 78,810.60 m | -54.34% | 100.00% | 11.43% | \$11,821.59 | 299 | 91.67% |
-| **Optimal (Hungarian)** | 78,788.90 m | -54.35% | 100.00% | 11.43% | \$11,818.34 | 300 | 91.67% |
-| **Forecast + Affinity** | 78,810.30 m | -54.34% | 100.00% | 11.43% | \$11,821.55 | 298 | 91.67% |
+The forecast-and-affinity strategy does **not** beat Hungarian on door-picking distance: it is 21.35 m/week higher (about 0.03%). The affinity measure does show a separate effect: its 14.58 m mean co-order pair distance is 0.17 m lower than Hungarian and 8.07 m (35.6%) lower than the random baseline. Its gain over the demand-only greedy result is small (0.21 m, about 1.4%); this synthetic run does not show a large incremental affinity advantage.
 
-### Financial Payback & ROI Analysis
-- **Weekly Walking Eliminated**: 93,814.35 meters / week (93.8 km/week).
-- **Daily Walking Eliminated**: 18,762.87 meters / day (18.8 km/day).
-- **Daily Financial Savings**: \$2,814.43 / day.
-- **Total Relocation Investment**: \$3,600.00 (300 moves $\times$ \$12.00).
-- **Payback Period**: **1.3 Operating Days**.
+Space utilization falls from 11.47% in the baseline to 11.43% after slotting. It did not improve. The sample warehouse is oversized relative to the stored product volume, so utilization is not a demonstrated benefit of this experiment.
 
----
+### Tight-capacity stress benchmark
 
-## 6. Limitations & Future Work
-- **Limitations**: Current floor model computes Manhattan aisle distance assuming direct rectilinear pathways without unidirectional one-way aisle traffic constraints.
-- **Future Work**: Integration of multi-picker routing heuristics (TSP / S-Shape routing) and automated dynamic slotting triggered by ERP inventory webhooks.
+Reproduce this run from the repository root with:
+
+```bash
+.\.venv\Scripts\python.exe -m engine.stress_benchmark
+```
+
+The fixed-seed scenario has 300 products and 320 locations. It makes 40 non-special-handling SKUs too large for medium locations (65 × 55 × 50 cm), while only 50 of the nearest locations are large enough. ABC-Greedy fills the closest feasible bins for higher-demand flexible products first and leaves 40 products unassigned. Hungarian reserves enough large locations for those constrained SKUs and returns a complete feasible plan.
+
+| Strategy | Assigned / products | Weekly pick distance (m) | Feasibility |
+|---|---:|---:|---:|
+| ABC-Greedy | 260 / 300 | Not comparable: incomplete plan | Incomplete |
+| Hungarian | 300 / 300 | 96,823.95 | 100.00% |
+
+The greedy distance is intentionally not reported: it covers only its 260 assigned products and would misleadingly look smaller because it omits 40 products. This stress result demonstrates Hungarian's advantage in producing a complete feasible assignment when size constraints bind; it does not claim a lower distance than a complete greedy plan.
+
+## 5. Illustrative Relocation Payback
+
+Using the Hungarian standard result against the baseline:
+
+- **Weekly walking distance avoided:** 93,814.40 m.
+- **Daily walking distance avoided:** 18,762.88 m over 5 operating days.
+- **Illustrative daily labor value:** ₹562.89 at ₹0.03/m.
+- **Relocation estimate:** ₹3,600 (300 moves × ₹12).
+- **Illustrative payback:** 6.4 operating days.
+
+This estimate is assumption-sensitive. It treats every avoided meter as labor value at a constant rate and does not include route interactions, implementation disruption, or measured wage data; it is not a guaranteed saving.
+
+## 6. Limitations and Next Steps
+
+- The stress case models one SKU per slot; the separate ILP prototype handles multi-item capacity only on a bounded subset.
+- Manhattan distance assumes direct rectilinear travel and omits aisle topology, picker routing, congestion, and one-way traffic.
+- Validate the synthetic results against a warehouse's actual layout, order history, labor cost, and relocation effort before making financial claims.
+- Future work includes picker-route-aware optimization and evaluating affinity/forecast outcomes on held-out real order data.

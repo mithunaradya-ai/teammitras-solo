@@ -7,7 +7,10 @@ while preserving distance to door and strict feasibility constraints.
 
 from collections import defaultdict
 import pandas as pd
-import numpy as np
+try:
+    from engine.metrics import check_assignment_feasibility
+except ImportError:
+    from metrics import check_assignment_feasibility
 
 
 def compute_affinity_lift(orders_df: pd.DataFrame, min_co_orders: int = 2) -> dict[tuple[str, str], float]:
@@ -53,54 +56,106 @@ def optimize_affinity_swaps(
     affinity_lift: dict[tuple[str, str], float],
     demand_lookup: dict[str, float],
     gamma_affinity_weight: float = 0.5,
-    max_passes: int = 3
+    max_passes: int = 3,
+    affinity_pair_counts: dict[tuple[str, str], int] | None = None,
+    nearby_locations: int = 20
 ) -> dict[str, str]:
-    """Perform deterministic swap-based local search minimizing pick distance and affinity penalty."""
-    try:
-        from slotiq.engine.metrics import check_assignment_feasibility
-    except ImportError:
-        from metrics import check_assignment_feasibility
+    """Swap feasible SKUs to balance door travel with co-order proximity."""
 
     loc_dict = locations_df.set_index("location_id").to_dict(orient="index")
     prod_dict = products_df.set_index("product_id").to_dict(orient="index")
+    loc_series = {location_id: pd.Series(row) for location_id, row in loc_dict.items()}
+    prod_series = {product_id: pd.Series(row) for product_id, row in prod_dict.items()}
     assignment = dict(current_assignment)
+    pair_counts = affinity_pair_counts or {pair: max(1, int(lift)) for pair, lift in affinity_lift.items()}
+    pair_counts = {
+        pair: count for pair, count in pair_counts.items()
+        if pair[0] in assignment and pair[1] in assignment
+    }
+    if not pair_counts:
+        return assignment
 
-    # Focus on top affinity pairs sorted deterministically by lift descending
-    sorted_affinities = sorted(affinity_lift.items(), key=lambda x: (-x[1], x[0]))
+    total_pair_count = sum(pair_counts.values())
+    mean_demand = sum(demand_lookup.values()) / max(1, len(demand_lookup))
+    location_to_product = {location_id: product_id for product_id, location_id in assignment.items()}
+    pair_edges_by_product: dict[str, list[tuple[str, int]]] = defaultdict(list)
+    for (product_a, product_b), count in pair_counts.items():
+        pair_edges_by_product[product_a].append((product_b, count))
+        pair_edges_by_product[product_b].append((product_a, count))
+
+    ranked_pairs = sorted(pair_counts, key=lambda pair: (-pair_counts[pair], pair))[:200]
+    location_ids = locations_df["location_id"].tolist()
+    location_coordinates = locations_df.set_index("location_id")[["x", "y"]].to_dict(orient="index")
+    nearby_by_location = {}
+    for location_id in location_ids:
+        x = float(location_coordinates[location_id]["x"])
+        y = float(location_coordinates[location_id]["y"])
+        nearby_by_location[location_id] = sorted(
+            location_ids,
+            key=lambda candidate_id: (
+                abs(float(location_coordinates[candidate_id]["x"]) - x)
+                + abs(float(location_coordinates[candidate_id]["y"]) - y),
+                candidate_id
+            )
+        )[:nearby_locations]
+
+    def affinity_distance_delta(product_id: str, new_location_id: str, swapped_product: str, old_location_id: str) -> float:
+        delta = 0.0
+        changed_products = {product_id, swapped_product}
+        changed_pairs = {
+            (min(changed_product, partner_id), max(changed_product, partner_id))
+            for changed_product in changed_products
+            for partner_id, _ in pair_edges_by_product.get(changed_product, [])
+        }
+        for pair in changed_pairs:
+            count = pair_counts.get(pair, 0)
+            if not count:
+                continue
+            first_id, second_id = pair
+            old_first_location, old_second_location = assignment[first_id], assignment[second_id]
+            new_first_location = new_location_id if first_id == product_id else old_location_id if first_id == swapped_product else old_first_location
+            new_second_location = new_location_id if second_id == product_id else old_location_id if second_id == swapped_product else old_second_location
+            old_distance = location_manhattan_distance(loc_dict[old_first_location], loc_dict[old_second_location])
+            new_distance = location_manhattan_distance(loc_dict[new_first_location], loc_dict[new_second_location])
+            delta += count * (new_distance - old_distance)
+        return delta
+
+    def swap_delta(product_id: str, swapped_product: str) -> float:
+        location_id = assignment[product_id]
+        swapped_location_id = assignment[swapped_product]
+        valid_product, _ = check_assignment_feasibility(prod_series[product_id], loc_series[swapped_location_id])
+        valid_swapped, _ = check_assignment_feasibility(prod_series[swapped_product], loc_series[location_id])
+        if not (valid_product and valid_swapped):
+            return float("inf")
+
+        travel_delta = (
+            demand_lookup.get(product_id, 1.0) * float(loc_dict[swapped_location_id]["distance_to_door"])
+            + demand_lookup.get(swapped_product, 1.0) * float(loc_dict[location_id]["distance_to_door"])
+            - demand_lookup.get(product_id, 1.0) * float(loc_dict[location_id]["distance_to_door"])
+            - demand_lookup.get(swapped_product, 1.0) * float(loc_dict[swapped_location_id]["distance_to_door"])
+        )
+        affinity_delta = affinity_distance_delta(product_id, swapped_location_id, swapped_product, location_id)
+        return travel_delta + gamma_affinity_weight * mean_demand * affinity_delta / total_pair_count
 
     for _ in range(max_passes):
         improved = False
-        for (p1, p2), lift in sorted_affinities:
-            loc1_id, loc2_id = assignment.get(p1), assignment.get(p2)
-            if not loc1_id or not loc2_id or loc1_id == loc2_id:
-                continue
+        for p1, p2 in ranked_pairs:
+            for product_id, partner_id in ((p1, p2), (p2, p1)):
+                partner_location_id = assignment.get(partner_id)
+                product_location_id = assignment.get(product_id)
+                if not partner_location_id or not product_location_id:
+                    continue
 
-            l1_data, l2_data = loc_dict[loc1_id], loc_dict[loc2_id]
-            p1_data, p2_data = prod_dict[p1], prod_dict[p2]
-
-            # Current state metrics
-            d1_old, d2_old = float(l1_data["distance_to_door"]), float(l2_data["distance_to_door"])
-            dem1, dem2 = demand_lookup.get(p1, 1.0), demand_lookup.get(p2, 1.0)
-            cost_old = (dem1 * d1_old) + (dem2 * d2_old)
-            inter_dist_old = location_manhattan_distance(l1_data, l2_data)
-
-            # Test candidate swap: p1 to loc2, p2 to loc1
-            p1_series, p2_series = pd.Series(p1_data), pd.Series(p2_data)
-            l1_series, l2_series = pd.Series(l1_data), pd.Series(l2_data)
-
-            valid_p1, _ = check_assignment_feasibility(p1_series, l2_series)
-            valid_p2, _ = check_assignment_feasibility(p2_series, l1_series)
-            if not (valid_p1 and valid_p2):
-                continue
-
-            cost_new = (dem1 * d2_old) + (dem2 * d1_old)
-            # Both items swapped simultaneously leaves their relative distance unchanged,
-            # but swapping either with a neighboring location closer to the partner reduces inter_dist!
-            # Search adjacent candidate locations to bring partner closer:
-            if cost_new < cost_old:
-                assignment[p1] = loc2_id
-                assignment[p2] = loc1_id
-                improved = True
+                for candidate_location_id in nearby_by_location[partner_location_id]:
+                    candidate_product_id = location_to_product.get(candidate_location_id)
+                    if not candidate_product_id or candidate_product_id == product_id:
+                        continue
+                    delta = swap_delta(product_id, candidate_product_id)
+                    if delta < -1e-9:
+                        assignment[product_id], assignment[candidate_product_id] = candidate_location_id, product_location_id
+                        location_to_product[candidate_location_id], location_to_product[product_location_id] = product_id, candidate_product_id
+                        improved = True
+                        break
 
         if not improved:
             break
@@ -109,7 +164,9 @@ def optimize_affinity_swaps(
 
 
 if __name__ == "__main__":
-    orders = pd.read_csv("slotiq/data/orders.csv")
+    from pathlib import Path
+
+    orders = pd.read_csv(Path(__file__).resolve().parent.parent / "data" / "orders.csv")
     lifts = compute_affinity_lift(orders)
     print(f"Computed {len(lifts)} co-purchase affinity pairs.")
     top_5 = sorted(lifts.items(), key=lambda x: -x[1])[:5]

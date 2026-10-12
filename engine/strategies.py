@@ -21,11 +21,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
-    from slotiq.engine.metrics import calculate_metrics, check_assignment_feasibility
-    from slotiq.engine.forecast import predict_next_week_demands
-    from slotiq.engine.affinity import compute_affinity_lift, optimize_affinity_swaps
+    from engine.metrics import calculate_metrics, check_assignment_feasibility, compute_affinity_pair_counts
+    from engine.forecast import predict_next_week_demands
+    from engine.affinity import compute_affinity_lift, optimize_affinity_swaps
 except ImportError:
     from metrics import calculate_metrics, check_assignment_feasibility
+    from metrics import compute_affinity_pair_counts
     from forecast import predict_next_week_demands
     from affinity import compute_affinity_lift, optimize_affinity_swaps
 
@@ -147,15 +148,18 @@ def strategy_forecast_affinity(
         products_df=p_forecasted,
         locations_df=locs,
         affinity_lift=lifts,
-        demand_lookup=forecast_dict
+        demand_lookup=forecast_dict,
+        affinity_pair_counts=compute_affinity_pair_counts(orders)
     )
     return refined_plan
 
 
-def run_all_strategies(data_dir: str = "slotiq/data") -> dict[str, dict]:
+def run_all_strategies(data_dir: str | None = None) -> dict[str, dict]:
     """Execute all strategies and return structured comparison dictionary."""
-    if not os.path.exists(data_dir):
+    if data_dir is None:
         data_dir = str(Path(__file__).resolve().parent.parent / "data")
+    if not os.path.exists(data_dir):
+        raise FileNotFoundError(f"Benchmark data directory not found: {data_dir}")
     prods, locs, orders = pd.read_csv(f"{data_dir}/products.csv"), pd.read_csv(f"{data_dir}/locations.csv"), pd.read_csv(f"{data_dir}/orders.csv")
     plans = {
         "Baseline": strategy_baseline(prods, locs),
@@ -163,17 +167,20 @@ def run_all_strategies(data_dir: str = "slotiq/data") -> dict[str, dict]:
         "Optimal (Hungarian)": strategy_optimal_hungarian(prods, locs),
         "Forecast + Affinity": strategy_forecast_affinity(prods, locs, orders)
     }
-    return {name: {"assignment": plan, "metrics": calculate_metrics(plan, prods, locs)} for name, plan in plans.items()}
+    return {
+        name: {"assignment": plan, "metrics": calculate_metrics(plan, prods, locs, orders_df=orders)}
+        for name, plan in plans.items()
+    }
 
 
 def print_comparison_table(results: dict[str, dict]):
     """Print markdown formatted leaderboard comparison of all strategies."""
-    headers = ["Strategy", "Pick Dist (m)", "Feasibility %", "Space Util %", "Labor Cost ($)", "Moves", "Top20 in Prime %"]
-    print("=" * 105)
+    headers = ["Strategy", "Pick Dist (m)", "Feasibility %", "Space Util %", "Labor Cost (INR)", "Affinity Dist (m)", "Moves"]
+    print("=" * 110)
     print("SLOTIQ STRATEGY LEADERBOARD BENCHMARK")
     print("=" * 105)
-    print(f"{headers[0]:<24} {headers[1]:>14} {headers[2]:>14} {headers[3]:>14} {headers[4]:>14} {headers[5]:>8} {headers[6]:>18}")
-    print("-" * 105)
+    print(f"{headers[0]:<24} {headers[1]:>14} {headers[2]:>14} {headers[3]:>14} {headers[4]:>16} {headers[5]:>18} {headers[6]:>8}")
+    print("-" * 110)
     for name, data in results.items():
         m = data["metrics"]
         print(
@@ -181,11 +188,11 @@ def print_comparison_table(results: dict[str, dict]):
             f"{m['total_picking_distance_m']:>14.1f} "
             f"{m['feasibility_pct']:>13.1f}% "
             f"{m['space_utilization_pct']:>13.1f}% "
-            f"${m['handling_cost_usd']:>13.2f} "
-            f"{m['moves_needed']:>8d} "
-            f"{m['high_demand_in_prime_slot_pct']:>17.1f}%"
+            f"INR {m['handling_cost_inr']:>10.2f} "
+            f"{m['average_affinity_distance_m']:>18.2f} "
+            f"{m['moves_needed']:>8d}"
         )
-    print("=" * 105)
+    print("=" * 110)
 
 
 if __name__ == "__main__":

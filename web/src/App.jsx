@@ -27,7 +27,9 @@ export default function App() {
 
   const handleApplyStrategy = async (strategyName) => {
     setActiveStrategy(strategyName);
-    const key = strategyName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const key = strategyName === 'Optimal (Hungarian)'
+      ? 'optimal'
+      : strategyName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
     try {
       await fetch(`${API_BASE}/optimize?strategy=${key}`, { method: 'POST' });
     } catch (e) {

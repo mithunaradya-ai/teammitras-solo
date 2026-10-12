@@ -1,0 +1,7 @@
+fastapi>=0.110
+numpy>=1.26,<3
+pandas>=2.0,<4
+PuLP>=2.8
+python-multipart>=0.0.9
+scipy>=1.11
+uvicorn[standard]>=0.27

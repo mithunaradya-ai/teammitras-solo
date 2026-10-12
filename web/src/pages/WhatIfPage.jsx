@@ -131,7 +131,7 @@ export default function WhatIfPage({ apiBase = 'http://localhost:8000' }) {
                 <div className="p-4 bg-slate-950 rounded-xl border border-slate-800">
                   <div className="text-xs text-slate-400">Handling Labor Cost</div>
                   <div className="text-xl font-bold text-emerald-400 font-mono mt-1">
-                    ${simResults.metrics.handling_cost_usd.toLocaleString()}
+                    ₹{simResults.metrics.handling_cost_inr.toLocaleString()}
                   </div>
                 </div>
 
