@@ -4,6 +4,10 @@ SlotIQ is a high-performance, deterministic warehouse slotting optimization engi
 
 Runs on standard laptops without GPU or paid external APIs.
 
+## System Overview
+
+![SlotIQ system architecture](assets/system-architecture.png)
+
 ---
 
 ## Quickstart (Setup in 3 Commands)
