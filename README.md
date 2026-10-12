@@ -104,13 +104,15 @@ class node_operator toneIndigo
 
 In PowerShell, clone the repository and run the backend commands from its root. The repository root contains `api/`, `engine/`, `data/`, `tests/`, and `web/` directly.
 
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and Python 3.11 if they are not already available.
+
 ### Backend
 
 ```bash
 git clone https://github.com/mithunaradya-ai/teammitras-solo.git
 cd teammitras-solo
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+uv venv --python 3.11 .venv
+uv pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m uvicorn api.main:app --reload
 ```
 
