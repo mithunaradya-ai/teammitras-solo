@@ -182,7 +182,7 @@ From the repository root:
 ├── web/                 # React 19 + Vite + Tailwind + Plotly.js Dark Dashboard
 ├── data/                # Benchmark clean & dirty CSVs
 ├── tests/               # Constraint verification & reproducibility test suite
-├── requirements.txt     # Python runtime and API dependencies
+├── requirements.txt     # Python runtime, API, and test dependencies
 ├── README.md            # Setup guide & CLI instructions
 └── REPORT.md            # Empirical performance report from real computed metrics
 ```
